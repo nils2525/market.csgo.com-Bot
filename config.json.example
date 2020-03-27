@@ -1,0 +1,20 @@
+{
+  "Key": "YourKeyHere",
+  "CheckInterval": 1000,
+  "Entries": [
+	{
+      "HashName": "Chroma 2 Case",
+      "MaxPrice": 0.02,
+      "Mode": 0,
+      "IsActive": true,
+      "MaxQuantity": null
+    },
+	{
+      "HashName": "Shadow Case",
+      "MaxPrice": 0.019,
+      "Mode": 1,
+      "IsActive": false,
+      "MaxQuantity": null
+    }
+  ]
+}
