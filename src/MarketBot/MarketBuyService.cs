@@ -1,5 +1,7 @@
 ﻿using MarketAPI;
 using MarketAPI.Models;
+using MarketBot.Data;
+using MarketBot.Models;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -7,33 +9,56 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Timers;
+using MarketBot.Data;
 
-namespace CSGOMarketBuyer
+namespace MarketBot
 {
-    public class MarketBuyerService
+    public class MarketBuyService
     {
         private Service _service;
         private System.Timers.Timer _timer;
         private bool _alreadyRunning = false;
 
-        public Dictionary<string, double> _items { get; set; } = new Dictionary<string, double>();
-        public MarketBuyerService(string apiKey)
+        public MarketBuyService()
         {
             _service = new Service(apiKey);
         }
 
-        public bool Start(Dictionary<string, double> items)
+        public bool Start()
         {
-            if (items != null)
+            if (_timer == null)
             {
-                _items = items;
+                if (!ConfigService.Instance.ConfigIsInitialized)
+                {
+                    if (!ConfigService.Instance.LoadConfig())
+                    {
+                        Console.WriteLine("Failed loading config.");
+                        return false;
+                    }
+                }
+
+                _timer = new System.Timers.Timer(ConfigService.GetConfig().CheckInterval);
+                _timer.Elapsed += Timer_Elapsed;
+                _timer.Start();
+
+                return true;
             }
 
-            _timer = new System.Timers.Timer(500);
-            _timer.Elapsed += Timer_Elapsed;
-            _timer.Start();
+            return false;
+        }
 
-            return true;
+        public bool Stop()
+        {
+            if (_timer != null)
+            {
+                _timer.Stop();
+                _timer.Elapsed -= Timer_Elapsed;
+                _timer = null;
+
+                return true;
+            }
+
+            return false;
         }
 
         private async void Timer_Elapsed(object sender, ElapsedEventArgs e)
@@ -47,7 +72,6 @@ namespace CSGOMarketBuyer
             }
         }
 
-
         private async Task BuyLowItemsAsync()
         {
             var interesingItems = await _service.GetItemsAsync(_items.Select(c => c.Key).ToList());
@@ -57,15 +81,15 @@ namespace CSGOMarketBuyer
                 var itemInPriceList = interesingItems?.Data?.Where(c => c.Key == item.Key)?.FirstOrDefault().Value;
                 if (itemInPriceList?.Count > 0)
                 {
-                    foreach(var itemToBuy in itemInPriceList.Where(c => c.Price > 0 && c.Price <= item.Value))
+                    foreach (var itemToBuy in itemInPriceList.Where(c => c.Price > 0 && c.Price <= item.Value))
                     {
                         var response = await _service.BuyItemAsync(itemToBuy.ID, itemToBuy.Price);
-                        Console.WriteLine(Environment.NewLine+"BuyItem (" + item.Key + ")| Successfully: " + (response?.IsSuccessfully ?? false) + " - Price: " + (response?.Price ?? 0));
+                        Console.WriteLine(Environment.NewLine + "BuyItem (" + item.Key + ")| Successfully: " + (response?.IsSuccessfully ?? false) + " - Price: " + (response?.Price ?? 0));
                     }
                 }
                 else
                 {
-                    Console.WriteLine(Environment.NewLine+"GetPriceList | Error while loading pricelist. | " + interesingItems?.ErrorMessage);
+                    Console.WriteLine(Environment.NewLine + "GetPriceList | Error while loading pricelist. | " + interesingItems?.ErrorMessage);
                     Thread.Sleep(10000);
                 }
             }
@@ -96,7 +120,7 @@ namespace CSGOMarketBuyer
                     Console.WriteLine("BuyItem | Successfully: " + response?.IsSuccessfully ?? false + " - Price: " + response?.Price);
                     lastData = (await _service.GetItemAsync(name))?.Data?.FirstOrDefault();
                 }*/
-            }                       
+            }
         }
     }
 }

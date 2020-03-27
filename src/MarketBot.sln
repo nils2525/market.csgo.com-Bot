@@ -3,7 +3,19 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 16
 VisualStudioVersion = 16.0.29920.165
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MarketBot", ".\MarketBot\MarketBot.csproj", "{7DEE7222-6CAE-407A-AABF-993251BAF642}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "MarketBot", "MarketBot\MarketBot.csproj", "{7DEE7222-6CAE-407A-AABF-993251BAF642}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "MarketAPI", "..\sub\MarketAPI\src\MarketAPI\MarketAPI.csproj", "{61C20A7E-3981-49CB-8F98-175C1B63E15E}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "MarketAPI.Test", "..\sub\MarketAPI\src\MarketAPI.Test\MarketAPI.Test.csproj", "{D921EF10-8631-49E8-B2FB-8765EEB1DDE3}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "SmartWebClient", "..\sub\MarketAPI\sub\SmartWebClient\src\SmartWebClient\SmartWebClient.csproj", "{B649F525-6FFC-4918-82F3-1473E071288E}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "SmartWebClient.Test", "..\sub\MarketAPI\sub\SmartWebClient\src\SmartWebClient.Test\SmartWebClient.Test.csproj", "{F6C4B724-9FE7-45F6-889D-CC09D8D6DF1C}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Tests", "Tests", "{90C6242F-86F6-4264-87AB-E184CD48D474}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MarketBot.Test", "MarketBot.Test\MarketBot.Test.csproj", "{AAECDCA2-5603-4975-8397-5EF2E7D8AAC9}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -15,9 +27,34 @@ Global
 		{7DEE7222-6CAE-407A-AABF-993251BAF642}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{7DEE7222-6CAE-407A-AABF-993251BAF642}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{7DEE7222-6CAE-407A-AABF-993251BAF642}.Release|Any CPU.Build.0 = Release|Any CPU
+		{61C20A7E-3981-49CB-8F98-175C1B63E15E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{61C20A7E-3981-49CB-8F98-175C1B63E15E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{61C20A7E-3981-49CB-8F98-175C1B63E15E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{61C20A7E-3981-49CB-8F98-175C1B63E15E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D921EF10-8631-49E8-B2FB-8765EEB1DDE3}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D921EF10-8631-49E8-B2FB-8765EEB1DDE3}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D921EF10-8631-49E8-B2FB-8765EEB1DDE3}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D921EF10-8631-49E8-B2FB-8765EEB1DDE3}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B649F525-6FFC-4918-82F3-1473E071288E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B649F525-6FFC-4918-82F3-1473E071288E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B649F525-6FFC-4918-82F3-1473E071288E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B649F525-6FFC-4918-82F3-1473E071288E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{F6C4B724-9FE7-45F6-889D-CC09D8D6DF1C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F6C4B724-9FE7-45F6-889D-CC09D8D6DF1C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F6C4B724-9FE7-45F6-889D-CC09D8D6DF1C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F6C4B724-9FE7-45F6-889D-CC09D8D6DF1C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{AAECDCA2-5603-4975-8397-5EF2E7D8AAC9}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{AAECDCA2-5603-4975-8397-5EF2E7D8AAC9}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{AAECDCA2-5603-4975-8397-5EF2E7D8AAC9}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{AAECDCA2-5603-4975-8397-5EF2E7D8AAC9}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{D921EF10-8631-49E8-B2FB-8765EEB1DDE3} = {90C6242F-86F6-4264-87AB-E184CD48D474}
+		{F6C4B724-9FE7-45F6-889D-CC09D8D6DF1C} = {90C6242F-86F6-4264-87AB-E184CD48D474}
+		{AAECDCA2-5603-4975-8397-5EF2E7D8AAC9} = {90C6242F-86F6-4264-87AB-E184CD48D474}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {E8C4D3DB-BC40-4C6A-9E8B-D275652B9E83}
