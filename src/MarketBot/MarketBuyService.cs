@@ -198,7 +198,7 @@ namespace MarketBot
                 foreach (var itemToBuy in itemsToBuy)
                 {
                     var response = await _service.BuyItemAsync(itemToBuy.ID, itemToBuy.Price);
-                    Console.WriteLine(Environment.NewLine + "BuyItem (" + itemConfig.HashName + ")| Successfully: " + (response?.IsSuccessfully ?? false) + " - Price: " + (response?.Price ?? 0));
+                    Console.WriteLine("Info: Bought '" + itemConfig.HashName + "' at " + (response?.Price ?? 0) + " " + ConfigService.GetConfig().Currency + ". Successfully = " + (response?.IsSuccessfully ?? false));
                 }
             }
         }
@@ -216,7 +216,7 @@ namespace MarketBot
                 }
                 else
                 {
-                    Console.WriteLine("Average price for item '" + itemConfig.HashName + "' not available");
+                    Console.WriteLine("Warning: Average price for item '" + itemConfig.HashName + "' not available");
                 }
             }
 
@@ -227,7 +227,7 @@ namespace MarketBot
         {
             if (itemConfig.MaxPrice <= 0)
             {
-                Console.WriteLine("Max price for item '" + itemConfig.HashName + "' not set.");
+                Console.WriteLine("Warning: Max price for item '" + itemConfig.HashName + "' not set.");
                 return new List<ItemData>();
             }
 
@@ -258,20 +258,28 @@ namespace MarketBot
         private async Task CountCSGOInventoryAsync()
         {
             var steamID = await _service.GetMySteamIDAsync();
-            var csgoInventory = await _steamClient.GetObjectAsync<JObject>("profiles/" + steamID.SteamID64 + "/inventory/json/" + CSGOGameID + "/2");
+            JObject csgoInventory;
+
+            try
+            {
+                csgoInventory = await _steamClient.GetObjectAsync<JObject>("profiles/" + steamID.SteamID64 + "/inventory/json/" + CSGOGameID + "/2");
+            }
+            catch (Exception)
+            {
+                csgoInventory = null;
+            }
 
             var newInventorySize = csgoInventory?["rgInventory"]?.Count() ?? 0;
+            if (newInventorySize == 0)
+            {
+                Console.WriteLine("Warning: Failed to load steam inventory size");
+                return;
+            }
+
             if (_currentInventorySize == 0)
             {
-                if (newInventorySize == 0)
-                {
-                    Console.WriteLine("Warning: Failed to load steam inventory size");
-                    return;
-                }
-                else
-                {
-                    Console.WriteLine("Info: Steam inventory size " + newInventorySize);
-                }
+                // Display size only on startup
+                Console.WriteLine("Info: Steam inventory size " + newInventorySize);
             }
 
             _currentInventorySize = newInventorySize;
