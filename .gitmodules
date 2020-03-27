@@ -1,0 +1,4 @@
+[submodule "sub/MarketAPI"]
+	path = sub/MarketAPI
+	url = https://github.com/nils2525/market.csgo.com-API.git
+	branch = master
