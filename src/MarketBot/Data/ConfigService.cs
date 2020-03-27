@@ -81,7 +81,7 @@ namespace MarketBot.Data
 
         internal static Configuration GetConfig()
         {
-            return Instance.Configuration;
+            return Instance.Configuration ?? new Configuration();
         }
 
         internal bool LoadConfig()
@@ -137,7 +137,7 @@ namespace MarketBot.Data
 
         private void InitFileWatcher()
         {
-            _fileWatcher = new FileSystemWatcher(ConfigFile);
+            _fileWatcher = new FileSystemWatcher(".", ConfigFile);
             _fileWatcher.Changed += (o, e) =>
             {
                 ConfigIsInitialized = false;

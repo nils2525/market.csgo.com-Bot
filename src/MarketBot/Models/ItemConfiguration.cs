@@ -40,12 +40,12 @@ namespace MarketBot.Models
         IgnoreAveragePrice,
 
         /// <summary>
-        /// Use the average price when it is smaller than the MaxPrice
+        /// Use the average price when it is smaller than the configured MaxPrice
         /// </summary>
         ConsiderAveragePrice,
 
         /// <summary>
-        /// Ignore the MaxPrice, always buy when price is <= Average Price
+        /// Ignore the configured MaxPrice, always buy when price is <= Average Price
         /// </summary>
         UseAveragePrice,
     }

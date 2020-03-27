@@ -2,15 +2,17 @@
 using System;
 using System.Collections.Generic;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace MarketBot
 {
     class Program
     {
-        static void Main(string[] args)
+        static object lo = new object();
+        static async Task Main(string[] args)
         {
             var buyService = new MarketBuyService();
-            if (buyService.Start())
+            if (await buyService.Start())
             {
                 Thread.Sleep(-1);
             }
