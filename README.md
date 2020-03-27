@@ -1,2 +1,2 @@
 # market.csgo.com-BuyBot
-A buy bot for market.csgo.com
+A bot for market.csgo.com that automatically buy items under a specific price limit.
