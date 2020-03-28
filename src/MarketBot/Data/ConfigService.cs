@@ -1,8 +1,10 @@
 ﻿using MarketBot.Models;
 using Newtonsoft.Json;
+using SmartWebClient;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Reflection;
 using System.Text;
 
 namespace MarketBot.Data
@@ -17,7 +19,7 @@ namespace MarketBot.Data
 
         #region Fields
 
-        internal event EventHandler OnConfigUpdated;
+        internal event FileSystemEventHandler OnConfigUpdated;
 
         private static ConfigService _instance;
 
@@ -130,19 +132,24 @@ namespace MarketBot.Data
                 }
             };
 
-            Console.WriteLine("Creating dummy config file.");
+            Logger.LogToConsole(Logger.LogType.Information, "Creating dummy config file.");
             var jsonString = JsonConvert.SerializeObject(dummyConfig, Formatting.Indented);
             File.WriteAllText(ConfigFile, jsonString);
         }
 
         private void InitFileWatcher()
         {
-            _fileWatcher = new FileSystemWatcher(".", ConfigFile);
+            var currentDirectory = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
+            _fileWatcher = new FileSystemWatcher(currentDirectory, ConfigFile);
             _fileWatcher.Changed += (o, e) =>
             {
-                ConfigIsInitialized = false;
-                OnConfigUpdated(this, null);
+                if (ConfigIsInitialized)
+                {
+                    ConfigIsInitialized = false;
+                    OnConfigUpdated(o, e);
+                }
             };
+            _fileWatcher.EnableRaisingEvents = true;
         }
 
         #endregion

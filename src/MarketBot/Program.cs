@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using static SmartWebClient.Logger;
 
 namespace MarketBot
 {
@@ -18,7 +19,7 @@ namespace MarketBot
             }
             else
             {
-                Console.WriteLine("Starting the service failed.");
+                LogToConsole(LogType.Error, "Starting the service failed.");
             }
         }
     }

@@ -6,11 +6,13 @@ using Newtonsoft.Json.Linq;
 using SmartWebClient;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Timers;
+using static SmartWebClient.Logger;
 
 namespace MarketBot
 {
@@ -29,6 +31,8 @@ namespace MarketBot
         private bool _buyItemsAlreadyRunning = false;
         private bool _getAveragePriceAlreadyRunning = false;
         private bool _countInventoryAlreadyRunning = false;
+        private bool _serviceIsStarted;
+        private bool _serviceIsStarting;
 
         private Dictionary<string, double> _averageItemPrices = new Dictionary<string, double>();
         private int _currentInventorySize;
@@ -44,23 +48,32 @@ namespace MarketBot
 
         public async Task<bool> Start()
         {
-            if (_buyItemsTimer == null)
+            if (!_serviceIsStarted && !_serviceIsStarting)
             {
+                _serviceIsStarting = true;
+
                 if (!ConfigService.Instance.ConfigIsInitialized)
                 {
                     if (!ConfigService.Instance.LoadConfig())
                     {
-                        Console.WriteLine("Warning: Failed loading config");
+                        LogToConsole(LogType.Warning, "Failed loading config");
                         return false;
                     }
                 }
 
-                Console.WriteLine("Info: Starting Service");
+                LogToConsole(LogType.Information, "Starting Service");
 
                 ConfigService.Instance.OnConfigUpdated += async (o, e) =>
                 {
-                    Stop();
-                    await Start();
+                    if (o is FileSystemWatcher watcher)
+                    {
+                        watcher.EnableRaisingEvents = false;
+
+                        Stop();
+                        await Start();
+
+                        watcher.EnableRaisingEvents = true;
+                    }
                 };
 
                 _service = new Service(ConfigService.Instance.Configuration.Key);
@@ -71,7 +84,7 @@ namespace MarketBot
 
                 await CountCSGOInventoryAsync();
 
-                Console.WriteLine("Info: Prefilling average item prices");
+                LogToConsole(LogType.Information, "Prefilling average item prices");
                 await UpdateAverageItemPriceListAsync();
 
                 _buyItemsTimer = new System.Timers.Timer(ConfigService.GetConfig().CheckInterval); // Buy items n milliseconds
@@ -82,7 +95,8 @@ namespace MarketBot
                 _getAveragePriceTimer.Elapsed += GetAveragePriceTimer_Elapsed;
                 _getAveragePriceTimer.Start();
 
-                return true;
+                _serviceIsStarting = false;
+                return _serviceIsStarted = true;
             }
 
             return false;
@@ -90,9 +104,10 @@ namespace MarketBot
 
         public bool Stop()
         {
-            if (_buyItemsTimer != null)
+            if (_serviceIsStarted)
             {
-                Console.WriteLine("Info: Stopping Service");
+                _serviceIsStarted = false;
+                LogToConsole(LogType.Information, "Stopping Service");
 
                 _buyItemsTimer.Stop();
                 _buyItemsTimer.Elapsed -= BuyItemsTimer_Elapsed;
@@ -165,7 +180,7 @@ namespace MarketBot
         {
             if (_currentInventorySize >= MaxInventorySize)
             {
-                Console.WriteLine("Warning: Inventory is full!");
+                LogToConsole(LogType.Warning, "Inventory is full!");
                 return;
             }
 
@@ -173,7 +188,7 @@ namespace MarketBot
             if (activeItems.Count > 0)
             {
                 var currentItemInfos = await _service.GetItemsAsync(activeItems.Select(c => c.HashName).ToList());
-                Console.Write(".");
+                LogToConsole(LogType.None, ".", false);
 
                 if (currentItemInfos?.Data?.Count < 1)
                 {
@@ -198,7 +213,10 @@ namespace MarketBot
                 foreach (var itemToBuy in itemsToBuy)
                 {
                     var response = await _service.BuyItemAsync(itemToBuy.ID, itemToBuy.Price);
-                    Console.WriteLine("Info: Bought '" + itemConfig.HashName + "' at " + (response?.Price ?? 0) + " " + ConfigService.GetConfig().Currency + ". Successfully = " + (response?.IsSuccessfully ?? false));
+                    if (response?.IsSuccessfully ?? false)
+                    {
+                        LogToConsole(LogType.Information, "Bought '" + itemConfig.HashName + "' at " + (response?.Price ?? 0) + " " + ConfigService.GetConfig().Currency);
+                    }
                 }
             }
         }
@@ -216,7 +234,7 @@ namespace MarketBot
                 }
                 else
                 {
-                    Console.WriteLine("Warning: Average price for item '" + itemConfig.HashName + "' not available");
+                    LogToConsole(LogType.Warning, "Average price for item '" + itemConfig.HashName + "' not available");
                 }
             }
 
@@ -227,7 +245,7 @@ namespace MarketBot
         {
             if (itemConfig.MaxPrice <= 0)
             {
-                Console.WriteLine("Warning: Max price for item '" + itemConfig.HashName + "' not set.");
+                LogToConsole(LogType.Warning, "Max price for item '" + itemConfig.HashName + "' not set");
                 return new List<ItemData>();
             }
 
@@ -248,7 +266,7 @@ namespace MarketBot
                 }
                 else
                 {
-                    Console.WriteLine("Warning: Average price for item '" + itemConfig.HashName + "' not available");
+                    LogToConsole(LogType.Warning, "Average price for item '" + itemConfig.HashName + "' not available");
                 }
             }
 
@@ -258,41 +276,41 @@ namespace MarketBot
         private async Task CountCSGOInventoryAsync()
         {
             var steamID = await _service.GetMySteamIDAsync();
-            JObject csgoInventory;
+            int newInventorySize = 0;
 
             try
             {
-                csgoInventory = await _steamClient.GetObjectAsync<JObject>("profiles/" + steamID.SteamID64 + "/inventory/json/" + CSGOGameID + "/2");
+                var csgoInventory = await _steamClient.GetObjectAsync<JObject>("profiles/" + steamID.SteamID64 + "/inventory/json/" + CSGOGameID + "/2");
+                newInventorySize = csgoInventory?["rgInventory"]?.Count() ?? 0;
             }
             catch (Exception)
             {
-                csgoInventory = null;
+
             }
 
-            var newInventorySize = csgoInventory?["rgInventory"]?.Count() ?? 0;
             if (newInventorySize == 0)
             {
-                Console.WriteLine("Warning: Failed to load steam inventory size");
+                LogToConsole(LogType.Warning, "Failed to load steam inventory size");
                 return;
             }
 
             if (_currentInventorySize == 0)
             {
                 // Display size only on startup
-                Console.WriteLine("Info: Steam inventory size " + newInventorySize);
+                LogToConsole(LogType.Information, "Steam inventory size " + newInventorySize);
             }
 
             _currentInventorySize = newInventorySize;
 
             if (_currentInventorySize > MaxInventorySize * 0.95 && _countInventoryTimer.Interval == DefaultInventoryCountInterval)
             {
-                Console.WriteLine("Warning: Inventory is 95% filled!");
+                LogToConsole(LogType.Warning, "Inventory is 95% filled!");
                 // Inventory 95% filled. Check size every 10 seconds from now
                 _countInventoryTimer.Interval = 10 * 1000;
             }
             else if (_countInventoryTimer.Interval != DefaultInventoryCountInterval && _currentInventorySize < MaxInventorySize * 0.95)
             {
-                Console.WriteLine("Info: Inventory was emptied.");
+                LogToConsole(LogType.Warning, "Inventory was emptied.");
                 // Inventory was emptied. Reset interval to default value
                 _countInventoryTimer.Interval = DefaultInventoryCountInterval;
             }

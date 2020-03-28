@@ -33,3 +33,4 @@ A bot for market.csgo.com that automatically buy items under a specific price li
 
 - Stop buying when you have no money left
 - Stop buying after a specific amount
+- Use multiple currencies
