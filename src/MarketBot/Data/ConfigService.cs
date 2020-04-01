@@ -113,6 +113,14 @@ namespace MarketBot.Data
             }
         }
 
+        internal bool SaveConfig()
+        {
+            _fileWatcher.EnableRaisingEvents = false;
+            var result = WriteConfigToFile(Instance.Configuration);
+            _fileWatcher.EnableRaisingEvents = true;
+            return result;
+        }
+
         internal void CreateDummyConfig()
         {
             var dummyConfig = new Configuration()
@@ -132,9 +140,8 @@ namespace MarketBot.Data
                 }
             };
 
+            WriteConfigToFile(dummyConfig);
             Logger.LogToConsole(Logger.LogType.Information, "Creating dummy config file.");
-            var jsonString = JsonConvert.SerializeObject(dummyConfig, Formatting.Indented);
-            File.WriteAllText(ConfigFile, jsonString);
         }
 
         private void InitFileWatcher()
@@ -150,6 +157,18 @@ namespace MarketBot.Data
                 }
             };
             _fileWatcher.EnableRaisingEvents = true;
+        }
+
+        private bool WriteConfigToFile(Configuration config)
+        {
+            if(config != null)
+            {
+                var jsonString = JsonConvert.SerializeObject(config, Formatting.Indented);
+                File.WriteAllText(ConfigFile, jsonString);
+                return true;
+            }
+
+            return false;
         }
 
         #endregion

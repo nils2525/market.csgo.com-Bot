@@ -215,7 +215,21 @@ namespace MarketBot
                     var response = await _service.BuyItemAsync(itemToBuy.ID, itemToBuy.Price);
                     if (response?.IsSuccessfully ?? false)
                     {
-                        LogToConsole(LogType.Information, "Bought '" + itemConfig.HashName + "' at " + (response?.Price ?? 0) + " " + ConfigService.GetConfig().Currency);
+                        string quantityLeftString = "";
+                        if (itemConfig?.MaxQuantity > 0)
+                        {
+                            itemConfig.MaxQuantity = itemConfig.MaxQuantity - 1;
+                            quantityLeftString = ". (" + itemConfig.MaxQuantity + " left)";
+                            if (itemConfig.MaxQuantity == 0)
+                            {
+                                itemConfig.IsActive = false;
+                            }
+
+                            // Update new Quantity/IsActive settings to config file
+                            ConfigService.Instance.SaveConfig();
+                        }
+
+                        LogToConsole(LogType.Information, "Bought '" + itemConfig.HashName + "' at " + (response?.Price ?? 0) + " " + ConfigService.GetConfig().Currency + quantityLeftString);
                     }
                 }
             }
