@@ -9,6 +9,8 @@ A bot for market.csgo.com that automatically buy items under a specific price li
 - Pause when steam inventory is full
 - Different Buy-Modes
 - Update configuration without restart
+- Stop buying when you have no money left
+- Stop buying after a specific amount
 
 ### Buy-Modes
 
@@ -31,6 +33,4 @@ A bot for market.csgo.com that automatically buy items under a specific price li
 
 ## Planned Features
 
-- Stop buying when you have no money left
-- Stop buying after a specific amount
 - Use multiple currencies

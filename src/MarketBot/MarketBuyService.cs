@@ -24,18 +24,23 @@ namespace MarketBot
 
         private Service _service;
         private WebClient _steamClient = new WebClient("https://steamcommunity.com/", true);
+
         private System.Timers.Timer _buyItemsTimer;
         private System.Timers.Timer _getAveragePriceTimer;
         private System.Timers.Timer _countInventoryTimer;
+        private System.Timers.Timer _getBalanceTimer;
 
         private bool _buyItemsAlreadyRunning = false;
         private bool _getAveragePriceAlreadyRunning = false;
         private bool _countInventoryAlreadyRunning = false;
+        private bool _getBalanceAlreadyRunning = false;
+
         private bool _serviceIsStarted;
         private bool _serviceIsStarting;
 
         private Dictionary<string, double> _averageItemPrices = new Dictionary<string, double>();
         private int _currentInventorySize;
+        private double _marketBalance = 0;
 
         private readonly Dictionary<BuyMode, Func<ItemConfiguration, List<ItemData>, List<ItemData>>> _buyModeFunctions = new Dictionary<BuyMode, Func<ItemConfiguration, List<ItemData>, List<ItemData>>>();
 
@@ -95,11 +100,25 @@ namespace MarketBot
                 _getAveragePriceTimer.Elapsed += GetAveragePriceTimer_Elapsed;
                 _getAveragePriceTimer.Start();
 
+                _getBalanceTimer = new System.Timers.Timer(1 * 60 * 1000); // Get current balance every minute
+                _getBalanceTimer.Elapsed += GetBalanceTimer_Elapsed;
+                _getBalanceTimer.Start();
+
                 _serviceIsStarting = false;
                 return _serviceIsStarted = true;
             }
 
             return false;
+        }
+
+        private async void GetBalanceTimer_Elapsed(object sender, ElapsedEventArgs e)
+        {
+            if (!_getBalanceAlreadyRunning)
+            {
+                _getBalanceAlreadyRunning = true;
+                await UpdateBalanceAsync();
+                _getBalanceAlreadyRunning = false;
+            }
         }
 
         public bool Stop()
@@ -120,6 +139,10 @@ namespace MarketBot
                 _countInventoryTimer.Stop();
                 _countInventoryTimer.Elapsed -= CountInventoryTimer_Elapsed;
                 _countInventoryTimer = null;
+
+                _getBalanceTimer.Stop();
+                _getBalanceTimer.Elapsed -= GetBalanceTimer_Elapsed;
+                _getBalanceTimer = null;
 
                 return true;
             }
@@ -212,6 +235,12 @@ namespace MarketBot
 
                 foreach (var itemToBuy in itemsToBuy)
                 {
+                    if (_marketBalance < itemToBuy.Price)
+                    {
+                        LogToConsole(LogType.Warning, "Skipping purchase, as the balance is not sufficient.");
+                        continue;
+                    }
+
                     var response = await _service.BuyItemAsync(itemToBuy.ID, itemToBuy.Price);
                     if (response?.IsSuccessfully ?? false)
                     {
@@ -329,6 +358,23 @@ namespace MarketBot
                 _countInventoryTimer.Interval = DefaultInventoryCountInterval;
             }
 
+        }
+
+        private async Task UpdateBalanceAsync()
+        {
+            var newBalance = await _service.GetBalanceAsync();
+            if (newBalance != null)
+            {
+                _marketBalance = newBalance.Balance;
+                if (_marketBalance < 1)
+                {
+                    LogToConsole(LogType.Warning, "Balance is at " + newBalance.Balance + newBalance.Currency);
+                }
+            }
+            else
+            {
+                LogToConsole(LogType.Error, "GetBalance failed.");
+            }
         }
     }
 }
