@@ -18,6 +18,8 @@ namespace MarketBot.Models
         /// </summary>
         public double CheckInterval { get; set; } = 2000;
 
+        public bool EnablePing { get; set; }
+
         public List<ItemConfiguration> Entries { get; set; } = new List<ItemConfiguration>();
     }
 }

@@ -29,11 +29,13 @@ namespace MarketBot
         private System.Timers.Timer _getAveragePriceTimer;
         private System.Timers.Timer _countInventoryTimer;
         private System.Timers.Timer _getBalanceTimer;
+        private System.Timers.Timer _pingTimer;
 
         private bool _buyItemsAlreadyRunning = false;
         private bool _getAveragePriceAlreadyRunning = false;
         private bool _countInventoryAlreadyRunning = false;
         private bool _getBalanceAlreadyRunning = false;
+        private bool _isAlreadyPinging = false;
 
         private bool _serviceIsStarted;
         private bool _serviceIsStarting;
@@ -104,11 +106,29 @@ namespace MarketBot
                 _getBalanceTimer.Elapsed += GetBalanceTimer_Elapsed;
                 _getBalanceTimer.Start();
 
+                if (ConfigService.GetConfig().EnablePing)
+                {
+                    Logger.LogToConsole(LogType.Information, "Activating Selling/Autopurchase");
+                    _pingTimer = new System.Timers.Timer(3 * 61 * 1000); // Ping every 3min 3sec
+                    _pingTimer.Elapsed += PingTimer_Elapsed;
+                    _pingTimer.Start();
+                }
+
                 _serviceIsStarting = false;
                 return _serviceIsStarted = true;
             }
 
             return false;
+        }
+
+        private async void PingTimer_Elapsed(object sender, ElapsedEventArgs e)
+        {
+            if (!_isAlreadyPinging)
+            {
+                _isAlreadyPinging = true;
+                await HandlePingAsync();
+                _isAlreadyPinging = false;
+            }
         }
 
         private async void GetBalanceTimer_Elapsed(object sender, ElapsedEventArgs e)
@@ -143,6 +163,13 @@ namespace MarketBot
                 _getBalanceTimer.Stop();
                 _getBalanceTimer.Elapsed -= GetBalanceTimer_Elapsed;
                 _getBalanceTimer = null;
+
+                if(_pingTimer?.Enabled ?? false)
+                {
+                    _pingTimer.Stop();
+                    _pingTimer.Elapsed -= PingTimer_Elapsed;
+                    _pingTimer = null;
+                }
 
                 return true;
             }
@@ -375,6 +402,11 @@ namespace MarketBot
             {
                 LogToConsole(LogType.Error, "GetBalance failed.");
             }
+        }
+
+        private async Task HandlePingAsync()
+        {
+            var pingResult = await _service.PingAsync();
         }
     }
 }
