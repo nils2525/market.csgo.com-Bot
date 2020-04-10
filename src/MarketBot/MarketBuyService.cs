@@ -53,7 +53,7 @@ namespace MarketBot
             _buyModeFunctions.Add(BuyMode.UseAveragePrice, GetItemsToBuyUseAveragePrice);
         }
 
-        public async Task<bool> Start()
+        public async Task<bool> StartAsync()
         {
             if (!_serviceIsStarted && !_serviceIsStarting)
             {
@@ -76,8 +76,8 @@ namespace MarketBot
                     {
                         watcher.EnableRaisingEvents = false;
 
-                        Stop();
-                        await Start();
+                        await StopAsync();
+                        await StartAsync();
 
                         watcher.EnableRaisingEvents = true;
                     }
@@ -141,7 +141,7 @@ namespace MarketBot
             }
         }
 
-        public bool Stop()
+        public async Task<bool> StopAsync()
         {
             if (_serviceIsStarted)
             {
@@ -169,6 +169,11 @@ namespace MarketBot
                     _pingTimer.Stop();
                     _pingTimer.Elapsed -= PingTimer_Elapsed;
                     _pingTimer = null;
+                }
+
+                while(_buyItemsAlreadyRunning || _countInventoryAlreadyRunning || _getAveragePriceAlreadyRunning || _getBalanceAlreadyRunning || _isAlreadyPinging)
+                {
+                    await Task.Delay(250);
                 }
 
                 return true;

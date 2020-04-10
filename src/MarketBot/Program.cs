@@ -13,7 +13,7 @@ namespace MarketBot
         static async Task Main(string[] args)
         {
             var buyService = new MarketBuyService();
-            if (await buyService.Start())
+            if (await buyService.StartAsync())
             {
                 Thread.Sleep(-1);
             }
