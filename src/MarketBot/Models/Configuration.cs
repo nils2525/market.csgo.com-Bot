@@ -11,8 +11,6 @@ namespace MarketBot.Models
         /// </summary>
         public string Key { get; set; }
 
-        public string Currency { get; set; } = "USD";
-
         /// <summary>
         /// Interval in milliseconds to check all items if a good price is available
         /// </summary>

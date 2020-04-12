@@ -30,6 +30,29 @@ namespace MarketBot.Models
         /// Maximum quantity to buy; Disable this configuration when the quantity is reached
         /// </summary>
         public int? MaxQuantity { get; set; }
+
+        /// <summary>
+        /// Steam account that should be used instead of the main account linked to market.csgo.com
+        /// </summary>
+        public List<SteamAccount> AltAccounts { get; set; } = new List<SteamAccount>();
+    }
+
+    public class SteamAccount
+    {
+        /// <summary>
+        /// Steam 64 ID
+        /// </summary>
+        public int SteamID64 { get; set; }
+
+        /// <summary>
+        /// Steam 32 ID
+        /// </summary>
+        public int SteamID32 { get; set; }
+
+        /// <summary>
+        /// Trade token
+        /// </summary>
+        public string Token { get; set; }
     }
 
     public enum BuyMode

@@ -1,6 +1,7 @@
 ﻿using MarketAPI;
 using MarketAPI.Models;
 using MarketBot.Data;
+using MarketBot.Helper;
 using MarketBot.Models;
 using Newtonsoft.Json.Linq;
 using SmartWebClient;
@@ -13,6 +14,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Timers;
 using static SmartWebClient.Logger;
+using MarketBot.Extension;
 
 namespace MarketBot
 {
@@ -25,17 +27,7 @@ namespace MarketBot
         private Service _service;
         private WebClient _steamClient = new WebClient("https://steamcommunity.com/", true);
 
-        private System.Timers.Timer _buyItemsTimer;
-        private System.Timers.Timer _getAveragePriceTimer;
-        private System.Timers.Timer _countInventoryTimer;
-        private System.Timers.Timer _getBalanceTimer;
-        private System.Timers.Timer _pingTimer;
-
-        private bool _buyItemsAlreadyRunning = false;
-        private bool _getAveragePriceAlreadyRunning = false;
-        private bool _countInventoryAlreadyRunning = false;
-        private bool _getBalanceAlreadyRunning = false;
-        private bool _isAlreadyPinging = false;
+        private List<TimerHelper> _timers = new List<TimerHelper>();
 
         private bool _serviceIsStarted;
         private bool _serviceIsStarting;
@@ -70,48 +62,28 @@ namespace MarketBot
 
                 LogToConsole(LogType.Information, "Starting Service");
 
-                ConfigService.Instance.OnConfigUpdated += async (o, e) =>
-                {
-                    if (o is FileSystemWatcher watcher)
-                    {
-                        watcher.EnableRaisingEvents = false;
-
-                        await StopAsync();
-                        await StartAsync();
-
-                        watcher.EnableRaisingEvents = true;
-                    }
-                };
+                ConfigService.Instance.OnConfigUpdated += OnConfigUpdated;
 
                 _service = new Service(ConfigService.Instance.Configuration.Key);
+                if (!await _service.Init())
+                {
+                    Logger.LogToConsole(LogType.Error, "Failed initialising MarketAPI. Is the ApiKey correct?");
+                    return false;
+                }
 
-                _countInventoryTimer = new System.Timers.Timer(DefaultInventoryCountInterval); // Check inventory size n milliseconds
-                _countInventoryTimer.Elapsed += CountInventoryTimer_Elapsed;
-                _countInventoryTimer.Start();
-
-                await CountCSGOInventoryAsync();
+                await _timers.AddEntry(new TimerHelper(DefaultInventoryCountInterval, CountCSGOInventoryAsync, true)).RunActionAsync(); // Check inventory size n milliseconds
 
                 LogToConsole(LogType.Information, "Prefilling average item prices");
-                await UpdateAverageItemPriceListAsync();
+                await _timers.AddEntry(new TimerHelper(2 * 60 * 1000, UpdateAverageItemPriceListAsync, true)).RunActionAsync(); // Get average prices every 2 minutes
 
-                _buyItemsTimer = new System.Timers.Timer(ConfigService.GetConfig().CheckInterval); // Buy items n milliseconds
-                _buyItemsTimer.Elapsed += BuyItemsTimer_Elapsed;
-                _buyItemsTimer.Start();
+                _timers.Add(new TimerHelper(ConfigService.GetConfig().CheckInterval, BuyItemsAsync, true)); // Buy items every n milliseconds
+                _timers.Add(new TimerHelper(1 * 60 * 1000, UpdateBalanceAsync, true)); // Get current balance every minute
 
-                _getAveragePriceTimer = new System.Timers.Timer(2 * 60 * 1000); // Get average prices every 2 minutes
-                _getAveragePriceTimer.Elapsed += GetAveragePriceTimer_Elapsed;
-                _getAveragePriceTimer.Start();
-
-                _getBalanceTimer = new System.Timers.Timer(1 * 60 * 1000); // Get current balance every minute
-                _getBalanceTimer.Elapsed += GetBalanceTimer_Elapsed;
-                _getBalanceTimer.Start();
 
                 if (ConfigService.GetConfig().EnablePing)
                 {
                     Logger.LogToConsole(LogType.Information, "Activating Selling/Autopurchase");
-                    _pingTimer = new System.Timers.Timer(3 * 61 * 1000); // Ping every 3min 3sec
-                    _pingTimer.Elapsed += PingTimer_Elapsed;
-                    _pingTimer.Start();
+                    _timers.Add(new TimerHelper(3 * 61 * 1000, HandlePingAsync, true));
                 }
 
                 _serviceIsStarting = false;
@@ -120,27 +92,6 @@ namespace MarketBot
 
             return false;
         }
-
-        private async void PingTimer_Elapsed(object sender, ElapsedEventArgs e)
-        {
-            if (!_isAlreadyPinging)
-            {
-                _isAlreadyPinging = true;
-                await HandlePingAsync();
-                _isAlreadyPinging = false;
-            }
-        }
-
-        private async void GetBalanceTimer_Elapsed(object sender, ElapsedEventArgs e)
-        {
-            if (!_getBalanceAlreadyRunning)
-            {
-                _getBalanceAlreadyRunning = true;
-                await UpdateBalanceAsync();
-                _getBalanceAlreadyRunning = false;
-            }
-        }
-
         public async Task<bool> StopAsync()
         {
             if (_serviceIsStarted)
@@ -148,57 +99,36 @@ namespace MarketBot
                 _serviceIsStarted = false;
                 LogToConsole(LogType.Information, "Stopping Service");
 
-                _buyItemsTimer.Stop();
-                _buyItemsTimer.Elapsed -= BuyItemsTimer_Elapsed;
-                _buyItemsTimer = null;
+                ConfigService.Instance.OnConfigUpdated -= OnConfigUpdated;
 
-                _getAveragePriceTimer.Stop();
-                _getAveragePriceTimer.Elapsed -= GetAveragePriceTimer_Elapsed;
-                _getAveragePriceTimer = null;
-
-                _countInventoryTimer.Stop();
-                _countInventoryTimer.Elapsed -= CountInventoryTimer_Elapsed;
-                _countInventoryTimer = null;
-
-                _getBalanceTimer.Stop();
-                _getBalanceTimer.Elapsed -= GetBalanceTimer_Elapsed;
-                _getBalanceTimer = null;
-
-                if(_pingTimer?.Enabled ?? false)
+                var taskList = new List<Task>();
+                foreach (var timer in _timers)
                 {
-                    _pingTimer.Stop();
-                    _pingTimer.Elapsed -= PingTimer_Elapsed;
-                    _pingTimer = null;
+                    if (timer.IsEnabled)
+                    {
+                        var stopTask = timer.StopAsync();
+                        stopTask.Start();
+                        taskList.Add(stopTask);
+                    }
                 }
 
-                while(_buyItemsAlreadyRunning || _countInventoryAlreadyRunning || _getAveragePriceAlreadyRunning || _getBalanceAlreadyRunning || _isAlreadyPinging)
-                {
-                    await Task.Delay(250);
-                }
-
+                await Task.WhenAll(taskList.ToArray());
                 return true;
             }
 
             return false;
         }
 
-        private async void CountInventoryTimer_Elapsed(object sender, ElapsedEventArgs e)
+        private async void OnConfigUpdated(object sender, FileSystemEventArgs e)
         {
-            if (!_countInventoryAlreadyRunning)
+            if (sender is FileSystemWatcher watcher)
             {
-                _countInventoryAlreadyRunning = true;
-                await CountCSGOInventoryAsync();
-                _countInventoryAlreadyRunning = false;
-            }
-        }
+                watcher.EnableRaisingEvents = false;
 
-        private async void GetAveragePriceTimer_Elapsed(object sender, ElapsedEventArgs e)
-        {
-            if (!_getAveragePriceAlreadyRunning)
-            {
-                _getAveragePriceAlreadyRunning = true;
-                await UpdateAverageItemPriceListAsync();
-                _getAveragePriceAlreadyRunning = false;
+                await StopAsync();
+                await StartAsync();
+
+                watcher.EnableRaisingEvents = true;
             }
         }
 
@@ -217,17 +147,6 @@ namespace MarketBot
                         _averageItemPrices.Add(newPrice.Key, newPrice.Value.AveragePrice);
                     }
                 }
-            }
-        }
-
-        private async void BuyItemsTimer_Elapsed(object sender, ElapsedEventArgs e)
-        {
-            if (!_buyItemsAlreadyRunning)
-            {
-                _buyItemsAlreadyRunning = true;
-                await BuyItemsAsync();
-                //await BuyItemsAsync();
-                _buyItemsAlreadyRunning = false;
             }
         }
 
@@ -290,7 +209,7 @@ namespace MarketBot
                             ConfigService.Instance.SaveConfig();
                         }
 
-                        LogToConsole(LogType.Information, "Bought '" + itemConfig.HashName + "' at " + (response?.Price ?? 0) + " " + ConfigService.GetConfig().Currency + quantityLeftString);
+                        LogToConsole(LogType.Information, "Bought '" + itemConfig.HashName + "' at " + (response?.Price ?? 0) + " " + _service.Currency + quantityLeftString);
                     }
                 }
             }
@@ -377,19 +296,22 @@ namespace MarketBot
 
             _currentInventorySize = newInventorySize;
 
-            if (_currentInventorySize > MaxInventorySize * 0.95 && _countInventoryTimer.Interval == DefaultInventoryCountInterval)
+            var timer = _timers.FirstOrDefault(a => a.Action == CountCSGOInventoryAsync);
+            if (timer != null)
             {
-                LogToConsole(LogType.Warning, "Inventory is 95% filled!");
-                // Inventory 95% filled. Check size every 10 seconds from now
-                _countInventoryTimer.Interval = 10 * 1000;
+                if (_currentInventorySize > MaxInventorySize * 0.95 && timer.Interval == DefaultInventoryCountInterval)
+                {
+                    LogToConsole(LogType.Warning, "Inventory is 95% filled!");
+                    // Inventory 95% filled. Check size every 10 seconds from now
+                    timer.Interval = 10 * 1000;
+                }
+                else if (timer.Interval != DefaultInventoryCountInterval && _currentInventorySize < MaxInventorySize * 0.95)
+                {
+                    LogToConsole(LogType.Warning, "Inventory was emptied.");
+                    // Inventory was emptied. Reset interval to default value
+                    timer.Interval = DefaultInventoryCountInterval;
+                }
             }
-            else if (_countInventoryTimer.Interval != DefaultInventoryCountInterval && _currentInventorySize < MaxInventorySize * 0.95)
-            {
-                LogToConsole(LogType.Warning, "Inventory was emptied.");
-                // Inventory was emptied. Reset interval to default value
-                _countInventoryTimer.Interval = DefaultInventoryCountInterval;
-            }
-
         }
 
         private async Task UpdateBalanceAsync()

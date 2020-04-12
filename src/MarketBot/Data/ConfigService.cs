@@ -92,7 +92,7 @@ namespace MarketBot.Data
             {
                 var configString = File.ReadAllText(ConfigFile);
                 var config = JsonConvert.DeserializeObject<Configuration>(configString);
-                if (config?.Entries?.Count > 0)
+                if (IsConfigValid(config))
                 {
                     _configuration = config;
 
@@ -104,6 +104,8 @@ namespace MarketBot.Data
 
                     return ConfigIsInitialized = true;
                 }
+
+                Logger.LogToConsole(Logger.LogType.Error, "Config is invalid.");
                 return ConfigIsInitialized = false;
             }
             else
@@ -135,7 +137,14 @@ namespace MarketBot.Data
                         MaxPrice = 0.015,
                         MaxQuantity = null,
                         Mode = BuyMode.ConsiderAveragePrice,
-                        IsActive = false
+                        IsActive = false,
+                        AltAccounts = new List<SteamAccount>()
+                        {
+                            new SteamAccount()
+                            {
+                                Token = "TradeToken"
+                            }
+                        }
                     }
                 }
             };
@@ -161,7 +170,7 @@ namespace MarketBot.Data
 
         private bool WriteConfigToFile(Configuration config)
         {
-            if(config != null)
+            if (config != null)
             {
                 var jsonString = JsonConvert.SerializeObject(config, Formatting.Indented);
                 File.WriteAllText(ConfigFile, jsonString);
@@ -169,6 +178,17 @@ namespace MarketBot.Data
             }
 
             return false;
+        }
+
+        private bool IsConfigValid(Configuration config)
+        {
+            return(
+                config != null &&
+                config.CheckInterval > 0 &&
+                !String.IsNullOrWhiteSpace(config.Key) &&
+                config.Entries?.Count > 0 &&
+                config.Entries.TrueForAll(i => i.AltAccounts == null || i.AltAccounts.Count == 0 || i.AltAccounts.TrueForAll(a => Helper.SteamHelper.GetSteamID32(a.SteamID64) == a.SteamID32 && !String.IsNullOrWhiteSpace(a.Token)))
+                );
         }
 
         #endregion
