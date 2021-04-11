@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Text;
 using System.Threading.Tasks;
 using System.Timers;
+using static SmartWebClient.Logger;
 
 namespace MarketBot.Helper
 {
@@ -92,8 +93,10 @@ namespace MarketBot.Helper
                 {
                     await Action();
                 }
-                catch (Exception)
-                { }
+                catch (Exception ex)
+                {
+                    LogToConsole(ex);
+                }
 
                 ActionIsRunning = false;
             }

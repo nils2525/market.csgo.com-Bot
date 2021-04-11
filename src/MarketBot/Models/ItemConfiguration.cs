@@ -1,4 +1,6 @@
-﻿using System;
+﻿using MarketBot.Helper;
+using Newtonsoft.Json;
+using System;
 using System.Collections.Generic;
 using System.Text;
 
@@ -42,12 +44,13 @@ namespace MarketBot.Models
         /// <summary>
         /// Steam 64 ID
         /// </summary>
-        public int SteamID64 { get; set; }
+        public long SteamID64 { get; set; }
 
         /// <summary>
         /// Steam 32 ID
         /// </summary>
-        public int SteamID32 { get; set; }
+        [JsonIgnore]
+        public int SteamID32 => SteamHelper.GetSteamID32(SteamID64);
 
         /// <summary>
         /// Trade token

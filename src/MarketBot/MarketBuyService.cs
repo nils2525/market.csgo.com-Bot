@@ -20,10 +20,6 @@ namespace MarketBot
 {
     public class MarketBuyService
     {
-        private const int MaxInventorySize = 1000;
-        private const int CSGOGameID = 730;
-        private const double DefaultInventoryCountInterval = (1 * 60 * 1000);
-
         private Service _service;
         private WebClient _steamClient = new WebClient("https://steamcommunity.com/", true);
 
@@ -33,8 +29,10 @@ namespace MarketBot
         private bool _serviceIsStarting;
 
         private Dictionary<string, double> _averageItemPrices = new Dictionary<string, double>();
-        private int _currentInventorySize;
+        private Dictionary<long, InventoryMonitor> _inventoryMonitor = new Dictionary<long, InventoryMonitor>();
+
         private double _marketBalance = 0;
+        private long _steamID64;
 
         private readonly Dictionary<BuyMode, Func<ItemConfiguration, List<ItemData>, List<ItemData>>> _buyModeFunctions = new Dictionary<BuyMode, Func<ItemConfiguration, List<ItemData>, List<ItemData>>>();
 
@@ -60,21 +58,33 @@ namespace MarketBot
                     }
                 }
 
+                var config = ConfigService.Instance.Configuration;
+
                 LogToConsole(LogType.Information, "Starting Service");
 
                 ConfigService.Instance.OnConfigUpdated += OnConfigUpdated;
 
-                _service = new Service(ConfigService.Instance.Configuration.Key);
+                _service = new Service(config.Key);
                 if (!await _service.Init())
                 {
                     Logger.LogToConsole(LogType.Error, "Failed initialising MarketAPI. Is the ApiKey correct?");
                     return false;
                 }
 
-                await _timers.AddEntry(new TimerHelper(DefaultInventoryCountInterval, CountCSGOInventoryAsync, true)).RunActionAsync(); // Check inventory size n milliseconds
+                var mainSteamID = await _service.GetMySteamIDAsync();
+                _steamID64 = mainSteamID.SteamID64;
+                _inventoryMonitor.Add(_steamID64, InventoryMonitor.StartNewService(_steamID64));
 
-                LogToConsole(LogType.Information, "Prefilling average item prices");
-                await _timers.AddEntry(new TimerHelper(2 * 60 * 1000, UpdateAverageItemPriceListAsync, true)).RunActionAsync(); // Get average prices every 2 minutes
+                foreach (var steamID in config.Entries.SelectMany(s => s.AltAccounts).GroupBy(a => a.SteamID64))
+                {
+                    _inventoryMonitor.Add(steamID.Key, InventoryMonitor.StartNewService(steamID.Key));
+                }
+
+                if (ConfigService.GetConfig().Entries.Any(c => c.Mode != BuyMode.IgnoreAveragePrice))
+                {
+                    LogToConsole(LogType.Information, "Prefilling average item prices");
+                    await _timers.AddEntry(new TimerHelper(config.AveragePriceCheckInterval * 60 * 1000, UpdateAverageItemPriceListAsync, true)).RunActionAsync(); // Get average prices every 5 minutes
+                }
 
                 _timers.Add(new TimerHelper(ConfigService.GetConfig().CheckInterval, BuyItemsAsync, true)); // Buy items every n milliseconds
                 _timers.Add(new TimerHelper(1 * 60 * 1000, UpdateBalanceAsync, true)); // Get current balance every minute
@@ -106,11 +116,16 @@ namespace MarketBot
                 {
                     if (timer.IsEnabled)
                     {
-                        var stopTask = timer.StopAsync();
-                        stopTask.Start();
-                        taskList.Add(stopTask);
+                        taskList.Add(timer.StopAsync());
                     }
                 }
+                _timers.Clear();
+
+                foreach(var monitor in _inventoryMonitor)
+                {
+                    taskList.Add(monitor.Value.StopAsync());
+                }
+                _inventoryMonitor.Clear();
 
                 await Task.WhenAll(taskList.ToArray());
                 return true;
@@ -152,12 +167,6 @@ namespace MarketBot
 
         private async Task BuyItemsAsync()
         {
-            if (_currentInventorySize >= MaxInventorySize)
-            {
-                LogToConsole(LogType.Warning, "Inventory is full!");
-                return;
-            }
-
             var activeItems = ConfigService.GetConfig().Entries.Where(c => c.IsActive).ToList();
             if (activeItems.Count > 0)
             {
@@ -186,13 +195,56 @@ namespace MarketBot
 
                 foreach (var itemToBuy in itemsToBuy)
                 {
+                    InventoryMonitor inventoryMonitor = null;
+                    SteamAccount altAccount = null;
+                    if (itemConfig.AltAccounts?.Count > 0)
+                    {
+                        altAccount = itemConfig.AltAccounts.FirstOrDefault(c =>
+                        {
+                            var monitor = _inventoryMonitor[c.SteamID64];
+                            if ((monitor.InventorySize + itemsToBuy.Count()) < InventoryMonitor.MaxCSGOInventorySize)
+                            {
+                                inventoryMonitor = monitor;
+                                return true;
+                            }
+                            return false;
+                        });
+
+                        if (altAccount == null)
+                        {
+                            LogToConsole(LogType.Warning, "Skipping purchase, as no alt account with enough space was found.");
+                            return;
+                        }
+                    }
+                    else
+                    {
+                        inventoryMonitor = _inventoryMonitor[_steamID64];
+                    }
+
+
+                    if (inventoryMonitor.InventorySize >= InventoryMonitor.MaxCSGOInventorySize)
+                    {
+                        LogToConsole(LogType.Warning, "Skipping purchase, as the main account has not enough space.");
+                        return;
+                    }
+
                     if (_marketBalance < itemToBuy.Price)
                     {
                         LogToConsole(LogType.Warning, "Skipping purchase, as the balance is not sufficient.");
                         continue;
                     }
 
-                    var response = await _service.BuyItemAsync(itemToBuy.ID, itemToBuy.Price);
+                    BuyItemResponse response;
+
+                    if (altAccount == null)
+                    {
+                        response = await _service.BuyItemAsync(itemToBuy.ID, itemToBuy.Price);
+                    }
+                    else
+                    {
+                        response = await _service.BuyItemForAsync(itemToBuy.ID, itemToBuy.Price, altAccount.SteamID32, altAccount.Token);
+                    }
+
                     if (response?.IsSuccessfully ?? false)
                     {
                         string quantityLeftString = "";
@@ -209,6 +261,7 @@ namespace MarketBot
                             ConfigService.Instance.SaveConfig();
                         }
 
+                        inventoryMonitor.InventorySize++;
                         LogToConsole(LogType.Information, "Bought '" + itemConfig.HashName + "' at " + (response?.Price ?? 0) + " " + _service.Currency + quantityLeftString);
                     }
                 }
@@ -265,53 +318,6 @@ namespace MarketBot
             }
 
             return itemsToBuy;
-        }
-
-        private async Task CountCSGOInventoryAsync()
-        {
-            var steamID = await _service.GetMySteamIDAsync();
-            int newInventorySize = 0;
-
-            try
-            {
-                var csgoInventory = await _steamClient.GetObjectAsync<JObject>("profiles/" + steamID.SteamID64 + "/inventory/json/" + CSGOGameID + "/2");
-                newInventorySize = csgoInventory?["rgInventory"]?.Count() ?? 0;
-            }
-            catch (Exception)
-            {
-
-            }
-
-            if (newInventorySize == 0)
-            {
-                LogToConsole(LogType.Warning, "Failed to load steam inventory size");
-                return;
-            }
-
-            if (_currentInventorySize == 0)
-            {
-                // Display size only on startup
-                LogToConsole(LogType.Information, "Steam inventory size " + newInventorySize);
-            }
-
-            _currentInventorySize = newInventorySize;
-
-            var timer = _timers.FirstOrDefault(a => a.Action == CountCSGOInventoryAsync);
-            if (timer != null)
-            {
-                if (_currentInventorySize > MaxInventorySize * 0.95 && timer.Interval == DefaultInventoryCountInterval)
-                {
-                    LogToConsole(LogType.Warning, "Inventory is 95% filled!");
-                    // Inventory 95% filled. Check size every 10 seconds from now
-                    timer.Interval = 10 * 1000;
-                }
-                else if (timer.Interval != DefaultInventoryCountInterval && _currentInventorySize < MaxInventorySize * 0.95)
-                {
-                    LogToConsole(LogType.Warning, "Inventory was emptied.");
-                    // Inventory was emptied. Reset interval to default value
-                    timer.Interval = DefaultInventoryCountInterval;
-                }
-            }
         }
 
         private async Task UpdateBalanceAsync()
