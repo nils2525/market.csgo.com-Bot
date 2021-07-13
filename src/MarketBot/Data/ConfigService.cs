@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
 using System.Text;
+using static MarketBot.Helper.LoggerHelper;
 
 namespace MarketBot.Data
 {
@@ -105,7 +106,7 @@ namespace MarketBot.Data
                     return ConfigIsInitialized = true;
                 }
 
-                Logger.LogToConsole(Logger.LogType.Error, "Config is invalid.");
+                WriteLog(Logger.LogType.Error, "Config is invalid.");
                 return ConfigIsInitialized = false;
             }
             else
@@ -150,12 +151,12 @@ namespace MarketBot.Data
             };
 
             WriteConfigToFile(dummyConfig);
-            Logger.LogToConsole(Logger.LogType.Information, "Creating dummy config file.");
+            WriteLog(Logger.LogType.Information, "Creating dummy config file.", false);
         }
 
         private void InitFileWatcher()
         {
-            var currentDirectory = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
+            var currentDirectory = Path.GetDirectoryName(AppContext.BaseDirectory);
             _fileWatcher = new FileSystemWatcher(currentDirectory, ConfigFile);
             _fileWatcher.Changed += (o, e) =>
             {

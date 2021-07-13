@@ -4,6 +4,7 @@ using System.Text;
 using System.Threading.Tasks;
 using System.Timers;
 using static SmartWebClient.Logger;
+using static MarketBot.Helper.LoggerHelper;
 
 namespace MarketBot.Helper
 {
@@ -95,7 +96,7 @@ namespace MarketBot.Helper
                 }
                 catch (Exception ex)
                 {
-                    LogToConsole(ex);
+                    WriteLog(ex);
                 }
 
                 ActionIsRunning = false;

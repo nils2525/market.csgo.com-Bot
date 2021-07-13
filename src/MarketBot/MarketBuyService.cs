@@ -14,14 +14,19 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Timers;
 using static SmartWebClient.Logger;
+using static MarketBot.Helper.LoggerHelper;
 using MarketBot.Extension;
 
 namespace MarketBot
 {
     public class MarketBuyService
     {
+        #region Fields
+
         private Service _service;
         private WebClient _steamClient = new WebClient("https://steamcommunity.com/", true);
+        private TelegramHelper _telegram = new TelegramHelper();
+        private TelegramConfigUpdater _telegramConfigUpdater;
 
         private List<TimerHelper> _timers = new List<TimerHelper>();
 
@@ -36,12 +41,20 @@ namespace MarketBot
 
         private readonly Dictionary<BuyMode, Func<ItemConfiguration, List<ItemData>, List<ItemData>>> _buyModeFunctions = new Dictionary<BuyMode, Func<ItemConfiguration, List<ItemData>, List<ItemData>>>();
 
+        #endregion
+
+        #region Constructors
+
         public MarketBuyService()
         {
             _buyModeFunctions.Add(BuyMode.ConsiderAveragePrice, GetItemsToBuyConsiderAveragePrice);
             _buyModeFunctions.Add(BuyMode.IgnoreAveragePrice, GetItemsToBuyIgnoreAveragePrice);
             _buyModeFunctions.Add(BuyMode.UseAveragePrice, GetItemsToBuyUseAveragePrice);
         }
+
+        #endregion
+
+        #region Methods
 
         public async Task<bool> StartAsync()
         {
@@ -53,21 +66,29 @@ namespace MarketBot
                 {
                     if (!ConfigService.Instance.LoadConfig())
                     {
-                        LogToConsole(LogType.Warning, "Failed loading config");
+                        WriteLog(LogType.Warning, "Failed loading config");
                         return false;
                     }
                 }
 
                 var config = ConfigService.Instance.Configuration;
 
-                LogToConsole(LogType.Information, "Starting Service");
+                if (config.TelegramActive)
+                {
+                    _telegram.Start();
+                    LoggerHelper.TelegramHelper = _telegram;
+                    _telegramConfigUpdater = new TelegramConfigUpdater(_telegram);
+                    _telegramConfigUpdater.Start();
+                }
+
+                WriteLog(LogType.Information, "Starting Service");
 
                 ConfigService.Instance.OnConfigUpdated += OnConfigUpdated;
 
                 _service = new Service(config.Key);
                 if (!await _service.Init())
                 {
-                    Logger.LogToConsole(LogType.Error, "Failed initialising MarketAPI. Is the ApiKey correct?");
+                    WriteLog(LogType.Error, "Failed initialising MarketAPI. Is the ApiKey correct?");
                     return false;
                 }
 
@@ -82,7 +103,7 @@ namespace MarketBot
 
                 if (ConfigService.GetConfig().Entries.Any(c => c.Mode != BuyMode.IgnoreAveragePrice))
                 {
-                    LogToConsole(LogType.Information, "Prefilling average item prices");
+                    WriteLog(LogType.Information, "Prefilling average item prices");
                     await _timers.AddEntry(new TimerHelper(config.AveragePriceCheckInterval * 60 * 1000, UpdateAverageItemPriceListAsync, true)).RunActionAsync(); // Get average prices every 5 minutes
                 }
 
@@ -92,7 +113,7 @@ namespace MarketBot
 
                 if (ConfigService.GetConfig().EnablePing)
                 {
-                    Logger.LogToConsole(LogType.Information, "Activating Selling/Autopurchase");
+                    WriteLog(LogType.Information, "Activating Selling/Autopurchase");
                     _timers.Add(new TimerHelper(3 * 61 * 1000, HandlePingAsync, true));
                 }
 
@@ -102,12 +123,13 @@ namespace MarketBot
 
             return false;
         }
+
         public async Task<bool> StopAsync()
         {
             if (_serviceIsStarted)
             {
                 _serviceIsStarted = false;
-                LogToConsole(LogType.Information, "Stopping Service");
+                WriteLog(LogType.Information, "Stopping Service");
 
                 ConfigService.Instance.OnConfigUpdated -= OnConfigUpdated;
 
@@ -121,49 +143,23 @@ namespace MarketBot
                 }
                 _timers.Clear();
 
-                foreach(var monitor in _inventoryMonitor)
+                foreach (var monitor in _inventoryMonitor)
                 {
                     taskList.Add(monitor.Value.StopAsync());
                 }
                 _inventoryMonitor.Clear();
 
                 await Task.WhenAll(taskList.ToArray());
+
+                _telegram.Stop();
+                _telegramConfigUpdater.Stop();
+
                 return true;
             }
 
             return false;
         }
 
-        private async void OnConfigUpdated(object sender, FileSystemEventArgs e)
-        {
-            if (sender is FileSystemWatcher watcher)
-            {
-                watcher.EnableRaisingEvents = false;
-
-                await StopAsync();
-                await StartAsync();
-
-                watcher.EnableRaisingEvents = true;
-            }
-        }
-
-        private async Task UpdateAverageItemPriceListAsync()
-        {
-            var itemList = ConfigService.GetConfig().Entries.Select(c => c.HashName).ToList();
-            var newPrices = await _service.GetItemHistoryAsync(itemList);
-
-            if (newPrices?.Data?.Count > 0)
-            {
-                lock (_averageItemPrices)
-                {
-                    _averageItemPrices = new Dictionary<string, double>();
-                    foreach (var newPrice in newPrices.Data)
-                    {
-                        _averageItemPrices.Add(newPrice.Key, newPrice.Value.AveragePrice);
-                    }
-                }
-            }
-        }
 
         private async Task BuyItemsAsync()
         {
@@ -171,7 +167,7 @@ namespace MarketBot
             if (activeItems.Count > 0)
             {
                 var currentItemInfos = await _service.GetItemsAsync(activeItems.Select(c => c.HashName).ToList());
-                LogToConsole(LogType.None, ".", false);
+                WriteConsoleLog(LogType.None, ".", false);
 
                 if (currentItemInfos?.Data?.Count < 1)
                 {
@@ -185,7 +181,6 @@ namespace MarketBot
                 }
             }
         }
-
         private async Task BuyItemAsync(ItemConfiguration itemConfig, List<ItemData> currentInfo)
         {
             if (currentInfo?.Count > 0)
@@ -212,7 +207,7 @@ namespace MarketBot
 
                         if (altAccount == null)
                         {
-                            LogToConsole(LogType.Warning, "Skipping purchase, as no alt account with enough space was found.");
+                            WriteLog(LogType.Warning, "Skipping purchase, as no alt account with enough space was found.", false);
                             return;
                         }
                     }
@@ -224,13 +219,13 @@ namespace MarketBot
 
                     if (inventoryMonitor.InventorySize >= InventoryMonitor.MaxCSGOInventorySize)
                     {
-                        LogToConsole(LogType.Warning, "Skipping purchase, as the main account has not enough space.");
+                        WriteLog(LogType.Warning, "Skipping purchase, as the main account has not enough space.", false);
                         return;
                     }
 
                     if (_marketBalance < itemToBuy.Price)
                     {
-                        LogToConsole(LogType.Warning, "Skipping purchase, as the balance is not sufficient.");
+                        WriteLog(LogType.Warning, "Skipping purchase, as the balance is not sufficient.", false);
                         continue;
                     }
 
@@ -262,11 +257,12 @@ namespace MarketBot
                         }
 
                         inventoryMonitor.InventorySize++;
-                        LogToConsole(LogType.Information, "Bought '" + itemConfig.HashName + "' at " + (response?.Price ?? 0) + " " + _service.Currency + quantityLeftString);
+                        WriteLog(LogType.Information, "Bought '" + itemConfig.HashName + "' at " + (response?.Price ?? 0) + " " + _service.Currency + quantityLeftString, false);
                     }
                 }
             }
         }
+
 
         private List<ItemData> GetItemsToBuyUseAveragePrice(ItemConfiguration itemConfig, List<ItemData> currentInfo)
         {
@@ -281,7 +277,7 @@ namespace MarketBot
                 }
                 else
                 {
-                    LogToConsole(LogType.Warning, "Average price for item '" + itemConfig.HashName + "' not available");
+                    WriteLog(LogType.Warning, "Average price for item '" + itemConfig.HashName + "' not available");
                 }
             }
 
@@ -292,7 +288,7 @@ namespace MarketBot
         {
             if (itemConfig.MaxPrice <= 0)
             {
-                LogToConsole(LogType.Warning, "Max price for item '" + itemConfig.HashName + "' not set");
+                WriteLog(LogType.Warning, "Max price for item '" + itemConfig.HashName + "' not set");
                 return new List<ItemData>();
             }
 
@@ -313,11 +309,30 @@ namespace MarketBot
                 }
                 else
                 {
-                    LogToConsole(LogType.Warning, "Average price for item '" + itemConfig.HashName + "' not available");
+                    WriteLog(LogType.Warning, "Average price for item '" + itemConfig.HashName + "' not available");
                 }
             }
 
             return itemsToBuy;
+        }
+
+
+        private async Task UpdateAverageItemPriceListAsync()
+        {
+            var itemList = ConfigService.GetConfig().Entries.Select(c => c.HashName).ToList();
+            var newPrices = await _service.GetItemHistoryAsync(itemList);
+
+            if (newPrices?.Data?.Count > 0)
+            {
+                lock (_averageItemPrices)
+                {
+                    _averageItemPrices = new Dictionary<string, double>();
+                    foreach (var newPrice in newPrices.Data)
+                    {
+                        _averageItemPrices.Add(newPrice.Key, newPrice.Value.AveragePrice);
+                    }
+                }
+            }
         }
 
         private async Task UpdateBalanceAsync()
@@ -328,12 +343,12 @@ namespace MarketBot
                 _marketBalance = newBalance.Balance;
                 if (_marketBalance < 1)
                 {
-                    LogToConsole(LogType.Warning, "Balance is at " + newBalance.Balance + newBalance.Currency);
+                    WriteLog(LogType.Warning, "Balance is at " + newBalance.Balance + newBalance.Currency);
                 }
             }
             else
             {
-                LogToConsole(LogType.Error, "GetBalance failed.");
+                WriteLog(LogType.Error, "GetBalance failed.", false);
             }
         }
 
@@ -341,5 +356,25 @@ namespace MarketBot
         {
             var pingResult = await _service.PingAsync();
         }
+
+
+        #endregion
+
+        #region EventHandlers
+
+        private async void OnConfigUpdated(object sender, FileSystemEventArgs e)
+        {
+            if (sender is FileSystemWatcher watcher)
+            {
+                watcher.EnableRaisingEvents = false;
+
+                await StopAsync();
+                await StartAsync();
+
+                watcher.EnableRaisingEvents = true;
+            }
+        }
+
+        #endregion
     }
 }

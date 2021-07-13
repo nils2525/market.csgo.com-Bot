@@ -23,6 +23,18 @@ namespace MarketBot.Models
 
         public bool EnablePing { get; set; }
 
+        /// <summary>
+        /// Token for a Telegram bot that can control the MarketBot
+        /// </summary>
+        public string TelegramToken { get; set; }
+
+        /// <summary>
+        /// Indicates if the Telegram bot is active/inactive
+        /// </summary>
+        public bool TelegramActive { get; set; }
+
+        public int TelegramUser { get; set; }
+
         public List<ItemConfiguration> Entries { get; set; } = new List<ItemConfiguration>();
     }
 }

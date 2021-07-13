@@ -6,6 +6,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using static SmartWebClient.Logger;
+using static MarketBot.Helper.LoggerHelper;
 
 namespace MarketBot.Helper
 {
@@ -41,23 +42,22 @@ namespace MarketBot.Helper
         {
             var newSize = await GetInventorySizeAsync(SteamID64);
 
-            if (InventorySize == 0)
-            {
-                // Display size only on startup
-                LogToConsole(LogType.Information, "Steam inventory size " + newSize);
+            if (SendInventorySizeMessage(InventorySize, newSize))
+            {                
+                WriteLog(LogType.Information, "Steam inventory size " + newSize);
             }
 
             InventorySize = newSize;
 
             if (InventorySize > MaxCSGOInventorySize * 0.95 && _timer.Interval == DefaultInventoryCountInterval)
             {
-                LogToConsole(LogType.Warning, "Inventory is 95% filled!");
+                WriteLog(LogType.Warning, "Inventory is 95% filled!");
                 // Inventory 95% filled. Check size every 10 seconds from now
                 _timer.Interval = 10 * 1000;
             }
             else if (_timer.Interval != DefaultInventoryCountInterval && InventorySize < MaxCSGOInventorySize * 0.95)
             {
-                LogToConsole(LogType.Warning, "Inventory was emptied.");
+                WriteLog(LogType.Warning, "Inventory was emptied.");
                 // Inventory was emptied. Reset interval to default value
                 _timer.Interval = DefaultInventoryCountInterval;
             }
@@ -87,5 +87,23 @@ namespace MarketBot.Helper
 
         }
 
+        private bool SendInventorySizeMessage(int oldSize, int newSize)
+        {
+            if (InventorySize == 0)
+            {
+                // Display size on startup
+                return true;
+            }
+
+            for (int i = 100; i < 1000; i += 100)
+            {
+                if (oldSize < i && newSize >= i)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
     }
 }
